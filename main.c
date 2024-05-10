@@ -35,6 +35,33 @@
 #define FREE(x) if ((x)) { free(x); (x) = NULL; }
 #define REPEAT_SENT_TELEMETRY
 
+static void cleanup_string(char** ptr)
+{
+    printf("calling %s\n", __func__);
+    free(*ptr);
+}
+
+static void cleanup_FD(FILE** ptr)
+{
+    printf("calling %s\n", __func__);
+    if (*ptr)
+    {
+    fclose(*ptr);
+    }
+}
+
+static void cleanup_cJSON(cJSON** ptr)
+{
+    printf("calling %s\n", __func__);
+    cJSON_Delete(*ptr);
+}
+
+static void cleanup_DIR(DIR** ptr)
+{
+    printf("calling %s\n", __func__);
+    closedir(*ptr);
+}
+
 static volatile sig_atomic_t keep_running = 1;
 
 static void sig_handler(int _)
@@ -145,7 +172,7 @@ static void on_command(IotclC2dEventData data) {
 
     bool need_forward_slash = (commands_list_path[strlen(commands_list_path) - 1] != '/');
     int total_command_length = strlen(commands_list_path) + strlen(command) + (int)need_forward_slash;
-    char* final_command_path = calloc(total_command_length, sizeof(command[0]));
+    char* __attribute__((__cleanup__(cleanup_string))) final_command_path = calloc(total_command_length, sizeof(command[0]));
     
     strcpy(final_command_path, commands_list_path);
     if(need_forward_slash)
@@ -156,13 +183,12 @@ static void on_command(IotclC2dEventData data) {
     // free((char*)command);
 
 
-    char *line = NULL;
+    char __attribute__((__cleanup__(cleanup_string))) *line = NULL;
     size_t len = 0;
     ssize_t read;
 
     // Execute script
-    FILE *fp = (FILE*)popen(final_command_path, "r");
-    free(final_command_path);
+    FILE __attribute__((__cleanup__(cleanup_FD))) *fp = (FILE*)popen(final_command_path, "r");
 
     if (!fp) {
         if (ack_id)
@@ -184,13 +210,12 @@ static void on_command(IotclC2dEventData data) {
             iotcl_mqtt_send_cmd_ack(ack_id, IOTCL_C2D_EVT_CMD_FAILED, "Failed to read stdout commnand, Skipping");
         }
         printf("Failed to execute commnand, Skipping\n");
-        free(line);
-        pclose(fp);
         return;
     }
 
     // Close the stdout stream and get the return code
     int return_code = pclose(fp);
+    fp = NULL;
 
     if (ack_id)
     {
@@ -198,7 +223,6 @@ static void on_command(IotclC2dEventData data) {
     }
 
     printf("Script exited with status %d\n", return_code);
-    free(line);
 }
 
 static bool is_app_version_same_as_ota(const char *version) {
@@ -296,10 +320,10 @@ static bool string_ends_with(const char * needle, const char* haystack)
     return (strncmp(str_end, needle, strlen(needle) ) == 0);
 }
 
-static int parse_raw_json_to_string(char* output, const char * const raw_json_str, char* key)
+static int parse_raw_json_to_string(char *output, const char *const raw_json_str, char *key)
 {
     const cJSON *value = NULL;
-    cJSON *json = cJSON_Parse(raw_json_str);
+    cJSON __attribute__((__cleanup__(cleanup_cJSON))) *json = cJSON_Parse(raw_json_str);
     if (json == NULL)
     {
         const char *error_ptr = cJSON_GetErrorPtr();
@@ -307,21 +331,106 @@ static int parse_raw_json_to_string(char* output, const char * const raw_json_st
         {
             fprintf(stderr, "Error before: %s\n", error_ptr);
         }
-        cJSON_Delete(json);
-        return EXIT_FAILURE; 
+        return EXIT_FAILURE;
     }
 
     value = cJSON_GetObjectItemCaseSensitive(json, key);
     if (cJSON_IsString(value) && (value->valuestring != NULL))
     {
-        strncpy(output,value->valuestring, strlen(value->valuestring));
-        
-        cJSON_Delete(json);
+        strncpy(output, value->valuestring, strlen(value->valuestring));
+
         return EXIT_SUCCESS;
     }
 
-    cJSON_Delete(json);
-    printf("failed to get %s from json\n", key);
+    printf("failed to get \"%s\" from json\n", key);
+    return EXIT_FAILURE;
+}
+
+static int parse_raw_json_to_int(int *output, const char *const raw_json_str, char *key)
+{
+    const cJSON *value = NULL;
+    cJSON __attribute__((__cleanup__(cleanup_cJSON))) *json = cJSON_Parse(raw_json_str);
+    if (json == NULL)
+    {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL)
+        {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+        }
+        return EXIT_FAILURE;
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (cJSON_IsNumber(value))
+    {
+        *output = value->valueint;
+
+        return EXIT_SUCCESS;
+    }
+
+    printf("failed to get \"%s\" from json\n", key);
+    return EXIT_FAILURE;
+}
+
+static int parse_raw_json_to_alloc_string(char **output, const char *const raw_json_str, char *key)
+{
+    const cJSON *value = NULL;
+    cJSON __attribute__((__cleanup__(cleanup_cJSON))) *json = cJSON_Parse(raw_json_str);
+    if (json == NULL)
+    {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL)
+        {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+        }
+        return EXIT_FAILURE;
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (cJSON_IsString(value) && (value->valuestring != NULL))
+    {
+        *output = calloc(strlen(value->valuestring) + 1, sizeof(char));
+        if (!*output)
+        {
+            printf("failed to get alloc string\n");
+            return EXIT_FAILURE;
+        }
+
+        strncpy(*output, value->valuestring, strlen(value->valuestring));
+
+        return EXIT_SUCCESS;
+    }
+
+    printf("failed to get \"%s\" from json\n", key);
+    return EXIT_FAILURE;
+}
+
+static int is_key_in_json(const char *const raw_json_str, char *key)
+{
+    const cJSON *value = NULL;
+    cJSON __attribute__((__cleanup__(cleanup_cJSON))) *json = cJSON_Parse(raw_json_str);
+    if (json == NULL)
+    {
+        const char *error_ptr = cJSON_GetErrorPtr();
+        if (error_ptr != NULL)
+        {
+            fprintf(stderr, "Error before: %s\n", error_ptr);
+        }
+        return EXIT_FAILURE;
+    }
+
+    value = cJSON_GetObjectItemCaseSensitive(json, key);
+    if (value)
+    {
+        return EXIT_SUCCESS;
+    }
+    if (cJSON_IsString(value) && (value->valuestring != NULL))
+    {
+        // strncpy(output,value->valuestring, strlen(value->valuestring));
+        return EXIT_SUCCESS;
+    }
+
+    printf("failed to get \"%s\" from json\n", key);
     return EXIT_FAILURE;
 }
 
@@ -348,7 +457,7 @@ static int init_scripts()
         return EXIT_FAILURE;
     }
 
-    DIR *dir;
+    DIR __attribute__((__cleanup__(cleanup_DIR))) *dir = NULL;
     struct dirent *entry;
     if ((dir = opendir(commands_list_path)) == NULL)
     {
@@ -358,13 +467,12 @@ static int init_scripts()
     // Get the total scripts count
     while ((entry = readdir(dir)) != NULL)
     {
-        if (strcmp( entry->d_name, ".") == STRINGS_ARE_EQUAL || strcmp( entry->d_name, "..") == STRINGS_ARE_EQUAL)
+        if (strcmp(entry->d_name, ".") == STRINGS_ARE_EQUAL || strcmp(entry->d_name, "..") == STRINGS_ARE_EQUAL)
         {
             continue;
         }
-    available_scripts_count++;
+        available_scripts_count++;
     }
-    closedir(dir);
 
     // Re-read the dir to reset to seek back to the start
     if ((dir = opendir(commands_list_path)) == NULL)
@@ -372,22 +480,59 @@ static int init_scripts()
         perror("opendir() error");
     }
 
-    available_scripts = calloc(available_scripts_count, sizeof(char*));
+    available_scripts = calloc(available_scripts_count, sizeof(char *));
 
     int itr = 0;
     while ((entry = readdir(dir)) != NULL)
     {
-        if (strcmp( entry->d_name, ".") == STRINGS_ARE_EQUAL || strcmp( entry->d_name, "..") == STRINGS_ARE_EQUAL)
+        if (strcmp(entry->d_name, ".") == STRINGS_ARE_EQUAL || strcmp(entry->d_name, "..") == STRINGS_ARE_EQUAL)
         {
             continue;
         }
-        available_scripts[itr] = calloc(strlen(entry->d_name), sizeof(char));       
+        available_scripts[itr] = calloc(strlen(entry->d_name), sizeof(char));
         strncpy(available_scripts[itr], entry->d_name, strlen(entry->d_name));
         itr++;
     }
-    closedir(dir);
 
     return EXIT_SUCCESS;
+}
+
+
+static char *open_json_and_return_allocated_string(const char *path)
+{
+    FILE __attribute__((__cleanup__(cleanup_FD))) *fd = fopen(path, "r");
+    if (!fd)
+    {
+        printf("File failed to open - %s", path);
+        return NULL;
+    }
+    fseek(fd, 0l, SEEK_END);
+    long file_len = ftell(fd);
+
+    if (file_len <= 0)
+    {
+        printf("failed calculating file length: %ld. Aborting\n", file_len);
+        fclose(fd);
+        return NULL;
+    }
+    rewind(fd);
+
+    char *json_str = (char *)calloc(file_len + 1, sizeof(char));
+    if (!json_str)
+    {
+        printf("failed to calloc. Aborting\n");
+        fclose(fd);
+        json_str = NULL;
+        return NULL;
+    }
+
+    for (int i = 0; i < file_len; i++)
+    {
+        json_str[i] = fgetc(fd);
+    }
+    // fclose(fd);
+
+    return json_str;
 }
 
 
