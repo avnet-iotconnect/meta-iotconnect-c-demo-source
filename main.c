@@ -172,7 +172,7 @@ static void on_command(IotclC2dEventData data) {
 
     bool need_forward_slash = (commands_list_path[strlen(commands_list_path) - 1] != '/');
     int total_command_length = strlen(commands_list_path) + strlen(command) + (int)need_forward_slash;
-    char* __attribute__((__cleanup__(cleanup_string))) final_command_path = calloc(total_command_length, sizeof(command[0]));
+    char* __attribute__((__cleanup__(cleanup_string))) final_command_path = calloc(total_command_length + 1, sizeof(command[0]));
     
     strcpy(final_command_path, commands_list_path);
     if(need_forward_slash)
@@ -219,7 +219,7 @@ static void on_command(IotclC2dEventData data) {
 
     if (ack_id)
     {
-        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, line);
+        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, "commandss");
     }
 
     printf("Script exited with status %d\n", return_code);
