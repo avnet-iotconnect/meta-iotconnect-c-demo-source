@@ -1,0 +1,5 @@
+{
+    "cmake.configureSettings": {
+        "IOTC_C_SDK_DIR": "./iotc-generic-c-sdk/iotc-generic-c-sdk"
+    }
+}
