@@ -194,7 +194,7 @@ static void on_command(IotclC2dEventData data) {
 
     if (ack_id)
     {
-        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS : IOTCL_C2D_EVT_CMD_FAILED, line);
+        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, line);
     }
 
     printf("Script exited with status %d\n", return_code);
@@ -237,7 +237,7 @@ static void on_ota(IotclC2dEventData data) {
         }
     }
 
-    iotcl_mqtt_send_ota_ack(ack_id, (success ? IOTCL_C2D_EVT_OTA_SUCCESS : IOTCL_C2D_EVT_OTA_DOWNLOAD_FAILED), message);
+    iotcl_mqtt_send_ota_ack(ack_id, (success ? IOTCL_C2D_EVT_OTA_DOWNLOAD_DONE : IOTCL_C2D_EVT_OTA_DOWNLOAD_FAILED), message);
 }
 
 static void publish_telemetry(int number_of_attributes, telemetry_attribute_t* telemetry) {
