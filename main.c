@@ -219,7 +219,7 @@ static void on_command(IotclC2dEventData data) {
 
     if (ack_id)
     {
-        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, "commandss");
+        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, NULL);
     }
 
     printf("Script exited with status %d\n", return_code);
