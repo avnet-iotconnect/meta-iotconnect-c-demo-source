@@ -43,6 +43,10 @@ static void sig_handler(int _)
     keep_running = 0;
 }
 
+char command_msg_buffer[4096];
+char *cmd_msg_buf = command_msg_buffer;
+size_t cmd_msg_buf_size = 4096;
+
 char* json_path = NULL;
 char device_id[256] = {};
 char company_id[256] = {};
@@ -100,6 +104,9 @@ static void on_command(IotclC2dEventData data) {
     const char *command = iotcl_c2d_get_command(data);
     const char *ack_id = iotcl_c2d_get_ack_id(data);
 
+    memset(cmd_msg_buf, sizeof(cmd_msg_buf[0]),cmd_msg_buf_size);
+
+
     if (command == NULL)
     {
         printf("Failed to parse command\n");
@@ -156,8 +163,8 @@ static void on_command(IotclC2dEventData data) {
     // free((char*)command);
 
 
-    char *line = NULL;
-    size_t len = 0;
+    // char *line = NULL;
+    // size_t len = 0;
     ssize_t read;
 
     // Execute script
@@ -174,7 +181,8 @@ static void on_command(IotclC2dEventData data) {
     }
 
     // Read stdout
-    while ((read = getline(&line, &len, fp)) != -1) {}
+    //while ((read = getline(&line, &len, fp)) != -1) {}
+    while ((read = getline(&cmd_msg_buf, &cmd_msg_buf_size, fp)) != -1) {}
 
     // if we have not read the entire file then something is wrong
     if (!feof(fp))
@@ -184,21 +192,23 @@ static void on_command(IotclC2dEventData data) {
             iotcl_mqtt_send_cmd_ack(ack_id, IOTCL_C2D_EVT_CMD_FAILED, "Failed to read stdout commnand, Skipping");
         }
         printf("Failed to execute commnand, Skipping\n");
-        free(line);
+        // free(line);
         pclose(fp);
         return;
     }
 
     // Close the stdout stream and get the return code
     int return_code = pclose(fp);
+    // strncpy(command_ack_message_buffer,line, 4096);
+    // free(line);
 
     if (ack_id)
     {
-        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, line);
+        iotcl_mqtt_send_cmd_ack(ack_id, (return_code == 0) ? IOTCL_C2D_EVT_CMD_SUCCESS_WITH_ACK : IOTCL_C2D_EVT_CMD_FAILED, cmd_msg_buf);
     }
 
     printf("Script exited with status %d\n", return_code);
-    free(line);
+    // free(line);
 }
 
 static bool is_app_version_same_as_ota(const char *version) {
